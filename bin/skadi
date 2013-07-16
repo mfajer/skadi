@@ -1,16 +1,24 @@
 #!/usr/bin/env python
 
 import io
+import math
 import optparse
 import os
+import pprint
 import sys
 
 pwd = os.path.dirname(__file__)
 root = os.path.join(pwd, '..')
 sys.path.append(root)
 
-from skadi.demo import Demo
-from skadi.io import protobuf as pb_io
+from skadi import demo
+from skadi.generated import demo_pb2 as pb_d
+from skadi.generated import netmessages_pb2 as pb_n
+from skadi.state import entity as ent
+from skadi.io import bitstream as io_bs
+from skadi.io import entity as io_en
+from skadi.io import property as io_pr
+from skadi.io import protobuf as io_pb
 
 option_parser = optparse.OptionParser()
 (options, args) = option_parser.parse_args()
@@ -18,8 +26,66 @@ option_parser = optparse.OptionParser()
 for arg in args:
   print '> parsing {0}'.format(os.path.basename(arg))
 
+  # Build a demo from the file.
   stream = io.open(os.path.join(root, arg), 'r+b')
-  demo_io = pb_io.DemoIO(stream)
-  dem = Demo.build(demo_io)
+  demo_io = io_pb.DemoIO(stream)
+  dem = demo.Demo.build(demo_io)
 
-  # feel free to inspect built demo here with print statements
+  # Let's go to the 4th FullPacket.
+  tick, offset = dem.chronology.epochs.items()[3]
+  demo_io.seek(offset)
+  iter_d = iter(demo_io)
+
+  snapshot = demo.Snapshot()
+
+  for pbmsg in iter_d:
+    if isinstance(pbmsg, pb_d.CDemoFullPacket):
+      data = pbmsg.packet.data
+      try:
+        dem.string_tables = pbmsg.string_table
+        dem.generate_entity_templates()
+      except KeyError:
+        continue
+    elif isinstance(pbmsg, pb_d.CDemoPacket):
+      data = pbmsg.data
+
+    for _pbmsg in io_pb.PacketIO.wrapping(data):
+      if isinstance(_pbmsg, pb_n.CNETMsg_Tick):
+        print 'tick: {0}'.format(_pbmsg.tick)
+      if isinstance(_pbmsg, pb_n.CSVCMsg_PacketEntities):
+        index, i = -1, 0
+        bs_io = io_bs.BitstreamIO(_pbmsg.entity_data)
+
+        while i < _pbmsg.updated_entries:
+          index, flags = io_en.HeaderReader(bs_io).read(index)
+
+          if flags & io_en.PVS.Enter:
+            reader = io_en.EnterPVSPreludeReader(bs_io)
+            cls, serial, prop_list = reader.read(dem.class_bits)
+            dt = dem.class_info[cls].dt
+            print 'create: {0} ({1})'.format(index, dt)
+            recv_table = dem.recv_tables[dt]
+            delta = io_en.PropReader(bs_io).read(prop_list, recv_table)
+            instance = ent.Instance(index, dem.templates[cls], delta=delta)
+
+            snapshot.instances[index] = instance
+          elif flags & io_en.PVS.Leave:
+            if flags & io_en.PVS.Delete:
+              dt = snapshot.instances[index].template.recv_table.dt
+              print 'delete: {0} ({1})'.format(index, dt)
+              del snapshot.instances[index]
+          else:
+            dt = snapshot.instances[index].template.recv_table.dt
+            print 'update: {0} ({1})'.format(index, dt)
+            instance = snapshot.instances[index]
+            prop_list = io_en.PropListReader(bs_io).read()
+            recv_table = instance.template.recv_table
+            delta = io_en.PropReader(bs_io).read(prop_list, recv_table)
+            instance.apply(delta)
+
+          i += 1
+
+        if _pbmsg.is_delta:
+          while bs_io.read(1):
+            index = stream.get_bits(11)
+            del snapshot.instances[index]

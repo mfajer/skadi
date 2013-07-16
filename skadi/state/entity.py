@@ -1,21 +1,27 @@
-class Entity(object):
-  def __init__(_id, recv_table):
-    self.id = _id
+class Template(object):
+  def __init__(self, class_id, recv_table, baseline):
+    self.class_id = class_id
     self.recv_table = recv_table
-    self.reset()
+    self.baseline = baseline
 
-  def reset(self):
-    self._state = {prop.var_name:None for prop in self.recv_table.props}
+  def __repr__(self):
+    return '{0} ({1} props)'.format(self.recv_table.dt, len(self.baseline))
 
-  def summarize(self):
-    return self._state.copy()
+class Instance(object):
+  def __init__(self, _id, template, delta=None):
+    self.id = _id
+    self.template = template
+    self.state = template.baseline.copy()
+    if delta:
+      self.apply(delta)
 
-  def __getattr__(self, name):
-    if name in self._state:
-      return self._state[name]
-    return super(Entity, self).__getattr__(name)
+  def __iter__(self):
+    return iter(self.state.items())
 
-  def __setattr__(self, name, value):
-    if name in self._state:
-      self._state[name] = value
-    super(Entity, self).__setattr__(name, value)
+  def __repr__(self):
+    dt, state = self.template.recv_table.dt, self.state
+    return '<Instance dt: {0}, state:{1}>'.format(dt, state)
+
+  def apply(self, delta):
+    for name, value in delta.items():
+      self.state[name] = value
