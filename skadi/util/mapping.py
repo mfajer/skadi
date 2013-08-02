@@ -13,8 +13,8 @@ class CoordinateMapper(object):
 			if len(matching_entities) != 1:
 				remove.append(key)
 			else:
-				val['cellX'] = matching_entities[0].state['DT_DOTA_BaseNPC.m_cellX']
-				val['cellY'] = matching_entities[0].state['DT_DOTA_BaseNPC.m_cellY']
+				val['cellX'] = matching_entities[0].state['DT_DOTA_BaseNPC.m_cellX'] + matching_entities[0].state['DT_DOTA_BaseNPC.m_vecOrigin'][0]/128.0
+				val['cellY'] = matching_entities[0].state['DT_DOTA_BaseNPC.m_cellY'] + matching_entities[0].state['DT_DOTA_BaseNPC.m_vecOrigin'][1]/128.0
 		for key in remove:
 			del self._reference[key]
 		self._generate_mapping()
@@ -43,6 +43,17 @@ if __name__ == "__main__":
 		'dota_badguys_tower1_bot': {'x':6767, 'y':-1569},
 		'dota_badguys_tower2_bot': {'x':6767, 'y':521},
 	}
+	# Reference frame for in-game vecOrigin (from starfox89)
+	ingame_vecorigin_ref = {
+		'dota_goodguys_tower1_top': {'x':-6096, 'y':1840},
+		'dota_goodguys_tower2_top': {'x':-6144, 'y':-832},
+		'dota_goodguys_tower1_mid': {'x':-1504, 'y':-1376},
+		'dota_goodguys_tower2_mid': {'x':-3512, 'y':-2776},
+		'dota_goodguys_tower1_bot': {'x':4928, 'y':-6080},
+		'dota_goodguys_tower2_bot': {'x':-560, 'y':-6096},
+		'ent_dota_fountain_good': {'x':-7456, 'y':-6960},
+		'ent_dota_fountain_bad': {'x':7472, 'y':6912},
+	}
 	# Reference frame for 25-megapixel top-down PNG from http://www.reddit.com/r/DotA2/comments/1805d9/the_complete_dota2_map_25_megapixel_resolution/
 	hires_map_ref = {
 		'dota_goodguys_tower1_top': {'x':655, 'y':1967},
@@ -57,7 +68,6 @@ if __name__ == "__main__":
 	# Set up the backend for display-less plotting	
 	import matplotlib
 	matplotlib.rcParams['backend'] = 'Agg'
-	sys.exit()
 
 	# Load the background map
 	import matplotlib.image
@@ -105,10 +115,14 @@ if __name__ == "__main__":
 	segments = numpy.concatenate([points[:-1], points[1:]], axis=1)
 
 	from matplotlib.collections import LineCollection
-	window = 1800
-	start_indices = range(0, len(segments)-window, window/4)
-	stop_indices = range(window, len(segments), window/4)
-	for image_idx, (start_idx, stop_idx) in enumerate(zip(start_indices, stop_indices)):
+#	window = 1800
+#	start_indices = range(0, len(segments)-window, window/4)
+#	stop_indices = range(window, len(segments), window/4)
+#	for image_idx, (start_idx, stop_idx) in enumerate(zip(start_indices, stop_indices)):
+	if True:
+		image_idx = 0
+		start_idx = 0
+		stop_idx = -1
 		# Plot the background image
 		pylab.imshow(background_map[::-1, :, :])
 
