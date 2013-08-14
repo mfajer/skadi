@@ -18,10 +18,11 @@ for tick_idx, tick in enumerate(demo_index.match.ticks):
 
 # Map the x/y coordinates
 mapper = mapping.CoordinateMapper(mapping.HIRES_MAP_REF, earlytick)
+HIRES_MAP_SHAPE = (4916, 5087, 3)
 mapped_xs = []
 mapped_ys = []
-for (x, y) in zip(xs, ys):
+for (x, y) in zip(xs.values(), ys.values()):
 	mx, my = mapper.to_mapped(x, y)
 	mapped_xs.append(mx)
 	# Re-orient so the (0,0) is in the radiant corner
-	mapped_ys.append(background_map.shape[0] - my)
+	mapped_ys.append(HIRES_MAP_SHAPE[1] - my)
