@@ -25,28 +25,41 @@ INGAME_VECORIGIN_REF = {
 	'ent_dota_fountain_bad': {'x':7472, 'y':6912},
 }
 # Reference frame for 25-megapixel top-down PNG from http://www.reddit.com/r/DotA2/comments/1805d9/the_complete_dota2_map_25_megapixel_resolution/
+# Remember to count the pixels from the bottom-left instead of the top-right corner (5087x4916)
 HIRES_MAP_REF = {
-	'dota_goodguys_tower1_top': {'x':655, 'y':1967},
-	'dota_goodguys_tower1_mid': {'x':2082, 'y':2967},
-	'dota_goodguys_tower1_bot': {'x':4077, 'y':4442},
-	'dota_badguys_tower1_top': {'x':1081, 'y':670},
-	'dota_badguys_tower1_mid': {'x':2870, 'y':2441},
-	'dota_badguys_tower1_bot': {'x':4441, 'y':3071},
+	'dota_goodguys_tower1_top': {'x':655, 'y':4916-1967},
+	'dota_goodguys_tower2_top': {'x':638, 'y':4916-2798},
+	'dota_goodguys_tower3_top': {'x':487, 'y':4916-3576},
+	'dota_goodguys_tower1_mid': {'x':2082, 'y':4916-2972},
+	'dota_goodguys_tower2_mid': {'x':1457, 'y':4916-3407},
+	'dota_goodguys_tower3_mid': {'x':1113, 'y':4916-3816},
+	'dota_goodguys_tower1_bot': {'x':4077, 'y':4916-4442},
+	'dota_goodguys_tower2_bot': {'x':2369, 'y':4916-4439},
+	'dota_goodguys_tower3_bot': {'x':1340, 'y':4916-4444},
+	'dota_badguys_tower1_top': {'x':1081, 'y':4916-670},
+	'dota_badguys_tower2_top': {'x':2558, 'y':4916-671},
+	'dota_badguys_tower3_top': {'x':3650, 'y':4916-747},
+	'dota_badguys_tower1_mid': {'x':2870, 'y':4916-2441},
+	'dota_badguys_tower2_mid': {'x':3319, 'y':4916-1885},
+	'dota_badguys_tower3_mid': {'x':3865, 'y':4916-1383},
+	'dota_badguys_tower1_bot': {'x':4441, 'y':4916-3071},
+	'dota_badguys_tower2_bot': {'x':4503, 'y':4916-2465},
+	'dota_badguys_tower3_bot': {'x':4499, 'y':4916-1613},
 }
 
 class CoordinateMapper(object):
-	def __init__(self, reference, snapshot):
+	def __init__(self, reference, entities):
 		'''Pass a reference dictionary of entity_name: {'x':x, 'y':y} coordinates.'''
 		self._reference = copy.deepcopy(reference)
 		# Add the cell coordinates into the reference
 		remove = []
 		for key, val in self._reference.iteritems():
-			matching_entities = filter(lambda x: 'DT_BaseEntity.m_iName' in x.state and x.state['DT_BaseEntity.m_iName'] == key, snapshot.entities.itervalues())
+			matching_entities = filter(lambda x: 'DT_BaseEntity.m_iName' in x[2] and x[2]['DT_BaseEntity.m_iName'] == key, entities.itervalues())
 			if len(matching_entities) != 1:
 				remove.append(key)
 			else:
-				val['cellX'] = matching_entities[0].state['DT_DOTA_BaseNPC.m_cellX'] + matching_entities[0].state['DT_DOTA_BaseNPC.m_vecOrigin'][0]/128.0
-				val['cellY'] = matching_entities[0].state['DT_DOTA_BaseNPC.m_cellY'] + matching_entities[0].state['DT_DOTA_BaseNPC.m_vecOrigin'][1]/128.0
+				val['cellX'] = matching_entities[0][2]['DT_DOTA_BaseNPC.m_cellX'] + matching_entities[0][2]['DT_DOTA_BaseNPC.m_vecOrigin'][0]/128.0
+				val['cellY'] = matching_entities[0][2]['DT_DOTA_BaseNPC.m_cellY'] + matching_entities[0][2]['DT_DOTA_BaseNPC.m_vecOrigin'][1]/128.0
 		for key in remove:
 			del self._reference[key]
 		self._generate_mapping()
@@ -90,8 +103,7 @@ if __name__ == "__main__":
 	for (x, y) in zip(xs, ys):
 		mx, my = mapper.to_mapped(x, y)
 		mapped_xs.append(mx)
-		# Re-orient so the (0,0) is in the radiant corner
-		mapped_ys.append(background_map.shape[0] - my)
+		mapped_ys.append(my)
 	# Re-orient so the (0,0) is in the radiant corner
 	pylab.imshow(background_map[::-1, :, :], origin='lower')
 	pylab.plot(mapped_xs, mapped_ys, 'b')
