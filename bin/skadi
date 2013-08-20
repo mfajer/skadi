@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import io
-import math
 import optparse
 import os
 import sys
@@ -10,85 +9,29 @@ pwd = os.path.dirname(__file__)
 root = os.path.join(pwd, '..')
 sys.path.append(root)
 
-from skadi.domain import entity as d_ent
-from skadi.domain import snapshot as d_snap
-from skadi.generated import demo_pb2 as pb_d
-from skadi.generated import netmessages_pb2 as pb_n
-from skadi.io import bitstream as io_b
-from skadi.io import protobuf as io_p
-from skadi.reader import demo as r_demo
-from skadi.reader import entity as r_ent
-from skadi.reader import string_table as r_st
+from skadi.engine import world as w
+from skadi.replay import demo as rd
+
 
 option_parser = optparse.OptionParser()
 (options, args) = option_parser.parse_args()
 
-for arg in args:
-  print '> parsing {0}'.format(os.path.basename(arg))
+path = os.path.join(root, args[0])
 
-  # Build a demo from the file.
-  stream = io.open(os.path.join(root, arg), 'r+b')
-  demo_io = io_p.Demo(stream)
-  dem = r_demo.read(demo_io)
+print '> opening {0}'.format(os.path.basename(path))
 
-  demo_io.seek(dem.post_sync)
-  iter_d = iter(demo_io)
+with io.open(path, 'r+b') as infile:
+  demo = rd.construct(infile)
 
-  snapshot = d_snap.Snapshot()
+  for tick, string_tables, world in demo.stream(tick=5000):
+    lane_creep_dt = 'DT_DOTA_BaseNPC_Creep_Lane'
+    lane_creeps = world.find_all_by_dt(lane_creep_dt)
 
-  for pbmsg in iter_d:
-    if isinstance(pbmsg, pb_d.CDemoFullPacket):
-      data = pbmsg.packet.data
-    elif isinstance(pbmsg, pb_d.CDemoPacket):
-      data = pbmsg.data
-
-    for _pbmsg in io_p.Packet.wrapping(data):
-      if isinstance(_pbmsg, pb_n.CNETMsg_Tick):
-        print 'tick {0}'.format(_pbmsg.tick)
-      elif isinstance(_pbmsg, pb_n.CSVCMsg_UpdateStringTable):
-        table_id = _pbmsg.table_id
-        table_name = dem.string_tables.keys()[table_id]
-        table = dem.string_tables[table_name]
-        io_bs = io_b.Bitstream(_pbmsg.string_data)
-        items = r_st.read(io_bs, table, _pbmsg.num_changed_entries)
-        for i in items:
-          item = table[i.name]
-          if item:
-            item.data = i.data
-          else:
-            table.items.append(i)
-        if table_name == 'instancebaseline':
-          dem.generate_entity_templates()
-      elif isinstance(_pbmsg, pb_n.CSVCMsg_PacketEntities):
-        io = io_b.Bitstream(_pbmsg.entity_data)
-
-        c, u, d = r_ent.read(
-          io,
-          _pbmsg.updated_entries, _pbmsg.is_delta,
-          dem.class_bits, dem.class_info, dem.recv_tables,
-          snapshot.instances
-        )
-
-        templates = dem.templates      # entity templates (via baseline)
-        instances = snapshot.instances # entity instances
-
-        # Creations
-        for spec, delta in c.items():
-          i, cls, serial = spec
-          instances[i] = d_ent.Instance(i, templates[cls], delta=delta)
-          print '  + {0} #{1}'.format(dem.class_info[cls].dt, str(i).ljust(4))
-          print '    delta: {0}'.format(delta)
-
-        # Updates
-        for i, delta in u.items():
-          ent = instances[i]
-          dt = ent.template.recv_table.dt
-          ent.apply(delta)
-          print '  . {0} #{1}'.format(dt, str(i).ljust(4))
-          print '    delta: {0}'.format(delta)
-
-        # Deletions
-        for i in d:
-          dt = instances[i].template.recv_table.dt
-          del instances[i]
-          print '  - {0} #{1}'.format(dt, str(i).ljust(4))
+    # FASCINATING USAGE EXAMPLE:
+    if lane_creeps:
+      print 'lane creeps at {0}: {1}'.format(tick, len(lane_creeps))
+      for ehandle, state in lane_creeps.items():
+        index, _ = w.from_ehandle(ehandle)
+        health = state[('DT_DOTA_BaseNPC_Creep_Lane', 'm_iHealthPercentage')]
+        health = int(float(health + 1) / 127.0 * 100)
+        print 'creep #{0}; {1}% health'.format(index, health)
