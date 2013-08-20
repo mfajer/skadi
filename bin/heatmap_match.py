@@ -10,7 +10,7 @@ root = os.path.join(pwd, '..')
 sys.path.append(root)
 
 from collections import OrderedDict
-from skadi import demo
+from skadi.replay import demo
 from skadi.util import mapping
 import numpy
 
@@ -25,85 +25,75 @@ with io.open(path, 'r+b') as infile:
 	replay = demo.construct(infile)
 
 	mapper = None
-	rulesid = None
-	radiant_teamid = None
-	radiant_heroids = set()
+	radiant_ehandles = set()
 	radiant_xs = []
 	radiant_ys = []
-	dire_teamid = None
-	dire_heroids = set()
+	dire_ehandles = set()
 	dire_xs = []
 	dire_ys = []
 
-	for tick, string_tables, entities in replay.stream(tick=0):
-		print 'at tick {0}: {1} entities'.format(tick, len(entities))
+	for tick, string_tables, world in replay.stream(tick=0):
+		print 'at tick {0}: {1} entities'.format(tick, len(world.by_ehandle))
 		# Make sure the game has not ended already
-		if rulesid is None:
-				for key, (cls, serial, state) in entities.iteritems():
-					if replay.recv_tables[cls].dt == u'DT_DOTAGamerulesProxy':
-						rulesid = key
-						break
-		if rulesid:
-			if entities[rulesid][2]['DT_DOTAGamerules.m_flGameEndTime'] > 0: break
+		_, gamerules = world.find_by_dt('DT_DOTAGamerulesProxy')
+		if gamerules[('DT_DOTAGamerules', 'm_flGameEndTime')] > 0: break
 		# Currently assuming that the key for a hero does not change
 		# Alternatively we can do this every tick
-		if len(radiant_heroids) < 5:
+		if len(radiant_ehandles) < 5:
 			# Find the DT_DOTA_PlayerResource entity
-			resourceid = None
-			for key, (cls, serial, state) in entities.iteritems():
-				if replay.recv_tables[cls].dt == u'DT_DOTA_PlayerResource':
-					resourceid = key
-					break
-			if resourceid is not None:
-				radiant_playerindices = []
-				for idx in range(10):
-					key = 'm_iPlayerTeams.%04d' % idx
-					if entities[resourceid][2][key] == 2:
-						radiant_playerindices.append(idx)
-				for idx in radiant_playerindices:
-					key = 'm_hSelectedHero.%04d' % idx
-					heroid = entities[resourceid][2][key] & 0x7ff
-					# Make sure it is actually in entities instead of 2047 (outside of the entities indexing)
-					if heroid in entities:
-						radiant_heroids.add(heroid)
-		if len(dire_heroids) < 5:
+			player_resource = world.find_by_dt('DT_DOTA_PlayerResource')[1]
+			radiant_playerindices = []
+			for idx in range(10):
+				key = ('m_iPlayerTeams', '%04d' % idx)
+				if player_resource[key] == 2:
+					radiant_playerindices.append(idx)
+			for idx in radiant_playerindices:
+				key = ('m_hSelectedHero', '%04d' % idx)
+				ehandle = player_resource[key]
+				# Make sure it is valid ehandle
+				try:
+					world.find(ehandle)
+					radiant_ehandles.add(ehandle)
+				except KeyError:
+					pass
+		if len(dire_ehandles) < 5:
 			# Find the DT_DOTA_PlayerResource entity
-			resourceid = None
-			for key, (cls, serial, state) in entities.iteritems():
-				if replay.recv_tables[cls].dt == u'DT_DOTA_PlayerResource':
-					resourceid = key
-					break
-			if resourceid is not None:
-				dire_playerindices = []
-				for idx in range(10):
-					key = 'm_iPlayerTeams.%04d' % idx
-					if entities[resourceid][2][key] == 3:
-						dire_playerindices.append(idx)
-				for idx in dire_playerindices:
-					key = 'm_hSelectedHero.%04d' % idx
-					heroid = entities[resourceid][2][key] & 0x7ff
-					# Make sure it is actually in entities instead of 2047 (outside of the entities indexing)
-					if heroid in entities:
-						dire_heroids.add(heroid)
+			player_resource = world.find_by_dt('DT_DOTA_PlayerResource')[1]
+			dire_playerindices = []
+			for idx in range(10):
+				key = ('m_iPlayerTeams', '%04d' % idx)
+				if player_resource[key] == 3:
+					dire_playerindices.append(idx)
+			for idx in dire_playerindices:
+				key = ('m_hSelectedHero', '%04d' % idx)
+				ehandle = player_resource[key]
+				# Make sure it is valid ehandle
+				try:
+					world.find(ehandle)
+					dire_ehandles.add(ehandle)
+				except KeyError:
+					pass
 		# Start grabbing the positions
-		if len(radiant_heroids) == 5 :
-			for heroid in radiant_heroids:
+		if len(radiant_ehandles) == 5 :
+			for ehandle in radiant_ehandles:
 				# Only take the coordinates if the hero is currently alive
-				if entities[heroid][2]['DT_DOTA_BaseNPC.m_lifeState'] == 0:
-					radiant_xs.append(entities[heroid][2]['DT_DOTA_BaseNPC.m_cellX'] + entities[heroid][2]['DT_DOTA_BaseNPC.m_vecOrigin'][0]/128.)
-					radiant_ys.append(entities[heroid][2]['DT_DOTA_BaseNPC.m_cellY'] + entities[heroid][2]['DT_DOTA_BaseNPC.m_vecOrigin'][1]/128.)
+				hero = world.find(ehandle)
+				if hero[('DT_DOTA_BaseNPC', 'm_lifeState')] == 0:
+					radiant_xs.append(hero[('DT_DOTA_BaseNPC', 'm_cellX')] + hero[('DT_DOTA_BaseNPC', 'm_vecOrigin')][0]/128.)
+					radiant_ys.append(hero[('DT_DOTA_BaseNPC', 'm_cellY')] + hero[('DT_DOTA_BaseNPC', 'm_vecOrigin')][1]/128.)
 			# If there is no mapper, make it (not sure when the towers are actually placed)
 			if mapper is None:
-				mapper = mapping.CoordinateMapper(mapping.HIRES_MAP_REF, entities)
-		if len(dire_heroids) == 5 :
-			for heroid in dire_heroids:
+				mapper = mapping.CoordinateMapper(mapping.HIRES_MAP_REF, world)
+		if len(dire_ehandles) == 5 :
+			for ehandle in dire_ehandles:
 				# Only take the coordinates if the hero is currently alive
-				if entities[heroid][2]['DT_DOTA_BaseNPC.m_lifeState'] == 0:
-					dire_xs.append(entities[heroid][2]['DT_DOTA_BaseNPC.m_cellX'] + entities[heroid][2]['DT_DOTA_BaseNPC.m_vecOrigin'][0]/128.)
-					dire_ys.append(entities[heroid][2]['DT_DOTA_BaseNPC.m_cellY'] + entities[heroid][2]['DT_DOTA_BaseNPC.m_vecOrigin'][1]/128.)
+				hero = world.find(ehandle)
+				if hero[('DT_DOTA_BaseNPC', 'm_lifeState')] == 0:
+					dire_xs.append(hero[('DT_DOTA_BaseNPC', 'm_cellX')] + hero[('DT_DOTA_BaseNPC', 'm_vecOrigin')][0]/128.)
+					dire_ys.append(hero[('DT_DOTA_BaseNPC', 'm_cellY')] + hero[('DT_DOTA_BaseNPC', 'm_vecOrigin')][1]/128.)
 			# If there is no mapper, make it (not sure when the towers are actually placed)
 			if mapper is None:
-				mapper = mapping.CoordinateMapper(mapping.HIRES_MAP_REF, entities)
+				mapper = mapping.CoordinateMapper(mapping.HIRES_MAP_REF, world)
 
 # At this point we should have a the mapper and all of the positions
 

@@ -48,20 +48,22 @@ HIRES_MAP_REF = {
 }
 
 class CoordinateMapper(object):
-	def __init__(self, reference, entities):
+	def __init__(self, reference, world):
 		'''Pass a reference dictionary of entity_name: {'x':x, 'y':y} coordinates.'''
 		self._reference = copy.deepcopy(reference)
 		# Add the cell coordinates into the reference
 		remove = []
-		for key, val in self._reference.iteritems():
-			matching_entities = filter(lambda x: 'DT_BaseEntity.m_iName' in x[2] and x[2]['DT_BaseEntity.m_iName'] == key, entities.itervalues())
-			if len(matching_entities) != 1:
-				remove.append(key)
+		for name, val in self._reference.iteritems():
+			for ehandle, state in world:
+				key = ('DT_BaseEntity', 'm_iName')
+				if key in state and state[key] == name:
+					val['cellX'] = state[('DT_DOTA_BaseNPC', 'm_cellX')] + state[('DT_DOTA_BaseNPC', 'm_vecOrigin')][0]/128.
+					val['cellY'] = state[('DT_DOTA_BaseNPC', 'm_cellY')] + state[('DT_DOTA_BaseNPC', 'm_vecOrigin')][1]/128.
+					break
 			else:
-				val['cellX'] = matching_entities[0][2]['DT_DOTA_BaseNPC.m_cellX'] + matching_entities[0][2]['DT_DOTA_BaseNPC.m_vecOrigin'][0]/128.0
-				val['cellY'] = matching_entities[0][2]['DT_DOTA_BaseNPC.m_cellY'] + matching_entities[0][2]['DT_DOTA_BaseNPC.m_vecOrigin'][1]/128.0
-		for key in remove:
-			del self._reference[key]
+				remove.append(name)
+		for name in remove:
+			del self._reference[name]
 		self._generate_mapping()
 
 	def _generate_mapping(self):
