@@ -18,6 +18,7 @@ parser.add_argument('basedir', help='Base directory to recursively search for re
 args = parser.parse_args()
 
 team_pickbans = {}
+tournament_tags = {}
 
 print '> Searching {0} for CM replays'.format(args.basedir)
 demo_paths = []
@@ -27,7 +28,7 @@ for (dirpath, dirnames, fnames) in os.walk(args.basedir):
 		demo_paths.append(path)
 print '> Found {0:d} replays to process'.format(len(demo_paths))
 
-for path in demo_paths:
+for idx, path in enumerate(demo_paths):
 	print '> opening {0} ({1:d}/{2:d})'.format(os.path.basename(path), idx, len(demo_paths))
 
 	with io.open(path, 'r+b') as infile:
@@ -38,16 +39,20 @@ for path in demo_paths:
 		last_team = None
 		pick_counter = {2: 0, 3: 0}
 		ban_counter = {2: 0, 3: 0}
-		team_names = {}
+		team_tags = {}
 
 		for tick, string_tables, world in replay.stream(tick=0):
-			# Grab the team names
-			if len(team_names) < 2:
+			# Grab the team tags
+			if len(team_tags) < 2:
 				for ehandle, state in world.find_all_by_dt('DT_DOTATeam').iteritems():
-					if state[(u'DT_Team', u'm_iTeamNum')] == 2:
-						team_names[2] = state[(u'DT_Team', u'm_szTeamname')]
-					elif state[(u'DT_Team', u'm_iTeamNum')] == 3:
-						team_names[3] = state[(u'DT_Team', u'm_szTeamname')]
+					team_num = state[(u'DT_Team', u'm_iTeamNum')]
+					team_tag = state[(u'DT_DOTATeam', u'm_szTag')]
+					team_tourny_id = state[(u'DT_DOTATeam', u'm_unTournamentTeamID')]
+					if team_num in (2, 3):
+						if team_tourny_id:
+							team_tags[team_num] = tournament_tags.setdefault(team_tourny_id, team_tag)
+						else:
+							team_tags[team_num] = team_tag
 			# Process the picks/bans
 			_, gamerules = world.find_by_dt('DT_DOTAGamerulesProxy')
 			current_state = gamerules[('DT_DOTAGamerules', 'm_nGameState')]
@@ -71,11 +76,11 @@ for path in demo_paths:
 					if 6 <= last_pickban <= 15:
 						ban_counter[last_team] += 1
 						pickban_key = 'ban-%d' % ban_counter[last_team]
-						team_pickbans.setdefault(team_names[last_team], {}).setdefault(combined_key, {}).setdefault(pickban_key, []).append(duration)
+						team_pickbans.setdefault(team_tags[last_team], {}).setdefault(combined_key, {}).setdefault(pickban_key, []).append(duration)
 					elif 16 <= last_pickban <= 25:
 						pick_counter[last_team] += 1
 						pickban_key = 'pick-%d' % pick_counter[last_team]
-						team_pickbans.setdefault(team_names[last_team], {}).setdefault(combined_key, {}).setdefault(pickban_key, []).append(duration)
+						team_pickbans.setdefault(team_tags[last_team], {}).setdefault(combined_key, {}).setdefault(pickban_key, []).append(duration)
 					else:
 						raise UserWarning("Unkown m_nHeroPickState: %d" % last_pickban)
 				last_time = current_time
@@ -90,7 +95,7 @@ pickban_order = ('ban-1', 'ban-2', 'pick-1', 'pick-2', 'ban-3', 'ban-4', 'pick-3
 filter_keys = ('Radiant - First pick', 'Radiant - Second pick', 'Dire - First pick', 'Dire - Second pick')
 combined_filter_keys = ('Radiant', 'Dire', 'First pick', 'Second pick')
 
-for name, pickbans in team_pickbans.items():
+for tag, pickbans in team_pickbans.items():
 	pylab.figure()
 	for idx, filter_key in enumerate(filter_keys):
 		pylab.subplot(2, 2, idx+1)
@@ -99,12 +104,12 @@ for name, pickbans in team_pickbans.items():
 			data = numpy.vstack([pickbans[filter_key][pickban_key] for pickban_key in pickban_order]).transpose()
 			num_samples = data.shape[0]
 			if num_samples > 1:
-				pylab.boxplot(data)
-		pylab.title('%s - %s (%d)' % (name, filter_key, num_samples))
+				pylab.boxplot(data, whis=1000)
+		pylab.title('%s - %s (%d)' % (tag, filter_key, num_samples))
 		pylab.xticks(range(1, 11), pickban_order, rotation=-90)
 		pylab.ylabel('Seconds to pick/ban')
 		pylab.ylim(0, 130)
-	fname = 'draft_%s_pick_and_side.png' % name.lower().replace(' ', '_')
+	fname = 'draft_%s_pick_and_side.png' % tag.lower().replace(' ', '_')
 	pylab.tight_layout()
 	pylab.savefig(fname)
 	pylab.close()
@@ -122,12 +127,12 @@ for name, pickbans in team_pickbans.items():
 				else:
 					aggregate_data = numpy.vstack((aggregate_data, data))
 		if aggregate_data is not None and aggregate_data.shape[0] > 1:
-			pylab.boxplot(aggregate_data)
-		pylab.title('%s - %s (%d)' % (name, filter_key, num_samples))
+			pylab.boxplot(aggregate_data, whis=1000)
+		pylab.title('%s - %s (%d)' % (tag, filter_key, num_samples))
 		pylab.xticks(range(1, 11), pickban_order, rotation=-90)
 		pylab.ylabel('Seconds to pick/ban')
 		pylab.ylim(0, 130)
-	fname = 'draft_%s_pick_or_side.png' % name.lower().replace(' ', '_')
+	fname = 'draft_%s_pick_or_side.png' % tag.lower().replace(' ', '_')
 	pylab.tight_layout()
 	pylab.savefig(fname)
 	pylab.close()
@@ -137,7 +142,7 @@ for idx, key in enumerate(filter_keys):
 	pylab.subplot(2, 2, idx+1)
 	num_samples = 0
 	aggregate_data = None
-	for name, pickbans in team_pickbans.items():
+	for tag, pickbans in team_pickbans.items():
 		if key in pickbans:
 			data = numpy.vstack([pickbans[key][pickban_key] for pickban_key in pickban_order]).transpose()
 			num_samples += data.shape[0]
@@ -146,7 +151,7 @@ for idx, key in enumerate(filter_keys):
 			else:
 				aggregate_data = numpy.vstack((aggregate_data, data))
 	if aggregate_data is not None and aggregate_data.shape[0] > 1:
-		pylab.boxplot(aggregate_data)
+		pylab.boxplot(aggregate_data, whis=1000)
 	pylab.title('All teams - %s (%d)' % (key, num_samples))
 	pylab.xticks(range(1, 11), pickban_order, rotation=-90)
 	pylab.ylabel('Seconds to pick/ban')
@@ -160,7 +165,7 @@ for idx, filter_key in enumerate(combined_filter_keys):
 	pylab.subplot(2, 2, idx+1)
 	num_samples = 0
 	aggregate_data = None
-	for name, pickbans in team_pickbans.items():
+	for tag, pickbans in team_pickbans.items():
 		for key, filtered_pickban in pickbans.items():
 			if filter_key in key:
 				data = numpy.vstack([pickbans[key][pickban_key] for pickban_key in pickban_order]).transpose()
@@ -170,7 +175,7 @@ for idx, filter_key in enumerate(combined_filter_keys):
 				else:
 					aggregate_data = numpy.vstack((aggregate_data, data))
 	if aggregate_data is not None and aggregate_data.shape[0] > 1:
-		pylab.boxplot(aggregate_data)
+		pylab.boxplot(aggregate_data, whis=1000)
 	pylab.title('All teams - %s (%d)' % (filter_key, num_samples))
 	pylab.xticks(range(1, 11), pickban_order, rotation=-90)
 	pylab.ylabel('Seconds to pick/ban')
