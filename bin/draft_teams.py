@@ -29,7 +29,7 @@ for (dirpath, dirnames, fnames) in os.walk(args.basedir):
 print '> Found {0:d} replays to process'.format(len(demo_paths))
 
 for idx, path in enumerate(demo_paths):
-	print '> opening {0} ({1:d}/{2:d})'.format(os.path.basename(path), idx, len(demo_paths))
+	print '> opening {0} ({1:d}/{2:d})'.format(os.path.basename(path), idx+1, len(demo_paths))
 
 	with io.open(path, 'r+b') as infile:
 		replay = demo.construct(infile)
