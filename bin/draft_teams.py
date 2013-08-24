@@ -2,6 +2,7 @@
 
 import io
 import argparse
+import operator
 import os
 import sys
 
@@ -73,6 +74,8 @@ for idx, path in enumerate(demo_paths):
 					combined_key = '%s - %s' % (side_key, starting_key)
 					pickban_dict = team_pickbans.setdefault(team_tags[team_id], {}).setdefault(combined_key, {})
 					pickban_dict.setdefault('total', []).append(draft_duration[team_id])
+					# Add the matchid
+					pickban_dict.setdefault('matchid', []).append(gamerules[(u'DT_DOTAGamerules', u'm_unMatchID')])
 				break
 			if current_state == 1: continue
 			# First pass
@@ -213,3 +216,17 @@ fname = 'draft_all_total.png'
 pylab.tight_layout()
 pylab.savefig(fname)
 pylab.close()
+
+# Find the 5 shortest and longest drafts
+all_totals = []
+for tag, pickbans in team_pickbans.iteritems():
+    for key, filtered_pickbans in pickbans.items():
+	for total, matchid in zip(filtered_pickbans['total'], filtered_pickbans['matchid']):
+	        all_totals.append((tag, total, matchid))
+all_totals.sort(key=operator.itemgetter(1))
+print '> Five shortest draft times:'
+for tag, total, matchid in all_totals[:5]:
+	print '%15s: %6.1fs (#%d)' % (tag, total, matchid)
+print '> Five longest draft times:'
+for tag, total, matchid in all_totals[-5:][::-1]:
+	print '%15s: %6.1fs (#%d)' % (tag, total, matchid)
