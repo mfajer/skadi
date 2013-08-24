@@ -40,6 +40,7 @@ for idx, path in enumerate(demo_paths):
 		pick_counter = {2: 0, 3: 0}
 		ban_counter = {2: 0, 3: 0}
 		team_tags = {}
+		draft_duration = {}
 
 		for tick, string_tables, world in replay.stream(tick=0):
 			# Grab the team tags
@@ -64,7 +65,15 @@ for idx, path in enumerate(demo_paths):
 				print '>> Not a CM match'
 				break
 			# Still drafting?
-			if current_state > 2: break
+			if current_state > 2:
+				# Add the total draft durations now
+				for team_id in (2, 3):
+					starting_key = 'First pick' if gamerules[(u'DT_DOTAGamerules', u'm_iStartingTeam')] == team_id else 'Second pick'
+					side_key = 'Radiant' if team_id == 2 else 'Dire'
+					combined_key = '%s - %s' % (side_key, starting_key)
+					pickban_dict = team_pickbans.setdefault(team_tags[team_id], {}).setdefault(combined_key, {})
+					pickban_dict.setdefault('total', []).append(draft_duration[team_id])
+				break
 			if current_state == 1: continue
 			# First pass
 			if current_pickban != last_pickban:
@@ -76,13 +85,14 @@ for idx, path in enumerate(demo_paths):
 					if 6 <= last_pickban <= 15:
 						ban_counter[last_team] += 1
 						pickban_key = 'ban-%d' % ban_counter[last_team]
-						team_pickbans.setdefault(team_tags[last_team], {}).setdefault(combined_key, {}).setdefault(pickban_key, []).append(duration)
 					elif 16 <= last_pickban <= 25:
 						pick_counter[last_team] += 1
 						pickban_key = 'pick-%d' % pick_counter[last_team]
-						team_pickbans.setdefault(team_tags[last_team], {}).setdefault(combined_key, {}).setdefault(pickban_key, []).append(duration)
 					else:
 						raise UserWarning("Unkown m_nHeroPickState: %d" % last_pickban)
+					pickban_dict = team_pickbans.setdefault(team_tags[last_team], {}).setdefault(combined_key, {})
+					pickban_dict.setdefault(pickban_key, []).append(duration)
+					draft_duration[last_team] = draft_duration.get(last_team, 0) + duration
 				last_time = current_time
 				last_pickban = current_pickban
 				last_team = current_team
@@ -95,6 +105,7 @@ pickban_order = ('ban-1', 'ban-2', 'pick-1', 'pick-2', 'ban-3', 'ban-4', 'pick-3
 filter_keys = ('Radiant - First pick', 'Radiant - Second pick', 'Dire - First pick', 'Dire - Second pick')
 combined_filter_keys = ('Radiant', 'Dire', 'First pick', 'Second pick')
 
+# First the individual team analysis
 for tag, pickbans in team_pickbans.items():
 	pylab.figure()
 	for idx, filter_key in enumerate(filter_keys):
@@ -137,6 +148,7 @@ for tag, pickbans in team_pickbans.items():
 	pylab.savefig(fname)
 	pylab.close()
 
+# Aggregate data
 pylab.figure()
 for idx, key in enumerate(filter_keys):
 	pylab.subplot(2, 2, idx+1)
@@ -181,6 +193,23 @@ for idx, filter_key in enumerate(combined_filter_keys):
 	pylab.ylabel('Seconds to pick/ban')
 	pylab.ylim(0, 130)
 fname = 'draft_all_pick_or_side.png'
+pylab.tight_layout()
+pylab.savefig(fname)
+pylab.close()
+
+# Total draft time comparison
+totals = OrderedDict()
+for tag in sorted(team_pickbans.keys()):
+	aggregate_data = []
+	for key, filtered_pickbans in team_pickbans[tag].items():
+		aggregate_data.extend(filtered_pickbans['total'])
+	totals[tag] = aggregate_data
+pylab.figure()
+pylab.boxplot(totals.values(), whis=1000)
+pylab.title('Total Draft Times')
+pylab.xticks(range(1, len(totals)+1), totals.keys(), rotation=-90)
+pylab.ylabel('Seconds')
+fname = 'draft_all_total.png'
 pylab.tight_layout()
 pylab.savefig(fname)
 pylab.close()
