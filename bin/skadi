@@ -35,13 +35,28 @@ for abspath in args:
     hero_name = pi.hero_name.encode('UTF-8')
     print '- {} ({})'.format(player_name, hero_name)
 
+  kotl_ehandle = None
+  vec_x = []
+  vec_y = []
+  cell_x = []
+  cell_y = []
+  frac_health = []
+
   for game in demo.stream(tick=5000):
     tick, user_msgs, game_evts, world, modifiers = game
 
     print 't {}'.format(tick)
 
-    # Print all active modifiers at every tick.
-    for ehandle, m_list in modifiers:
-      pretty = map(lambda (_, a): a['name'], m_list.items())
-      dt = world.fetch_recv_table(ehandle).dt
-      print ' {dt} (#{eh}): {attrs}'.format(dt=dt, eh=ehandle, attrs=pretty)
+    if kotl_ehandle is None:
+      for ehandle in world.find_all_by_dt(u'DT_DOTA_Unit_Hero_KeeperOfTheLight'):
+        kotl_ehandle = ehandle
+    if kotl_ehandle:
+      kotl = world.find(kotl_ehandle)
+      vec_x.append(kotl[('DT_DOTA_BaseNPC', 'm_vecOrigin')][0])
+      vec_y.append(kotl[('DT_DOTA_BaseNPC', 'm_vecOrigin')][1])
+      cell_x.append(kotl[('DT_DOTA_BaseNPC', 'm_cellX')])
+      cell_y.append(kotl[('DT_DOTA_BaseNPC', 'm_cellY')])
+      frac_health.append(float(kotl[('DT_DOTA_BaseNPC', 'm_iHealth')]) / kotl[('DT_DOTA_BaseNPC', 'm_iMaxHealth')])
+
+xs = [cell + vec/128.0 for (cell, vec) in zip(cell_x, vec_x)]
+ys = [cell + vec/128.0 for (cell, vec) in zip(cell_y, vec_y)]
